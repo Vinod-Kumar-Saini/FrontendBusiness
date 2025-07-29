@@ -3,7 +3,8 @@ import './App.css';
 import io from "socket.io-client";
 import axios from "axios";
 
-const socket = io("http://localhost:5000");
+// ✅ Connect to the backend server (NOT MongoDB)
+const socket = io("https://backendbusiness.onrender.com"); // Replace with your Render backend URL
 
 function App() {
   const [businesses, setBusinesses] = useState([]);
@@ -13,34 +14,39 @@ function App() {
   const [message, setMessage] = useState("");
 
   useEffect(() => {
-    axios.get("http://localhost:5000/api/business").then(res => setBusinesses(res.data));
+    axios.get("https://backendbusiness.onrender.com/api/business")
+      .then(res => setBusinesses(res.data))
+      .catch(err => console.error("Error fetching businesses:", err));
+
     socket.on("new-business", (data) => {
       setBusinesses(prev => [data, ...prev]);
     });
+
+    return () => socket.disconnect();
   }, []);
 
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post("http://localhost:5000/api/auth/login", auth);
+      const res = await axios.post("https://backendbusiness.onrender.com/api/auth/login", auth);
       localStorage.setItem("token", res.data.token);
       setToken(res.data.token);
       setMessage("Logged in successfully");
     } catch (err) {
-      setMessage("Login failed: " + err.response?.data);
+      setMessage("Login failed: " + err.response?.data || err.message);
     }
   };
 
   const handleAddBusiness = async (e) => {
     e.preventDefault();
     try {
-      await axios.post("http://localhost:5000/api/business", form, {
+      await axios.post("https://backendbusiness.onrender.com/api/business", form, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setForm({ name: "", phone: "", description: "", location: { lat: "", lng: "" } });
       setMessage("Business added!");
     } catch (err) {
-      setMessage("Add failed: " + err.response?.data);
+      setMessage("Add failed: " + err.response?.data || err.message);
     }
   };
 

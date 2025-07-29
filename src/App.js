@@ -1,29 +1,46 @@
 import React, { useEffect, useState } from "react";
 import './App.css';
-import io from "socket.io-client";
 import axios from "axios";
-
-// ✅ Connect to the backend server (NOT MongoDB)
-const socket = io("https://backendbusiness.onrender.com"); // Replace with your Render backend URL
+import io from "socket.io-client";
 
 function App() {
   const [businesses, setBusinesses] = useState([]);
   const [form, setForm] = useState({ name: "", phone: "", description: "", location: { lat: "", lng: "" } });
   const [auth, setAuth] = useState({ email: "", password: "" });
   const [token, setToken] = useState(localStorage.getItem("token"));
+  const [user, setUser] = useState(null); // ✅ store user data like role
   const [message, setMessage] = useState("");
+  const [socket, setSocket] = useState(null);
 
   useEffect(() => {
+    // ✅ connect socket only after mount
+    const newSocket = io("https://backendbusiness.onrender.com");
+    setSocket(newSocket);
+
+    return () => newSocket.disconnect(); // ✅ clean up
+  }, []);
+
+  useEffect(() => {
+    // ✅ Always fetch businesses, even without token
     axios.get("https://backendbusiness.onrender.com/api/business")
       .then(res => setBusinesses(res.data))
-      .catch(err => console.error("Error fetching businesses:", err));
+      .catch(err => {
+        console.error("Failed to load businesses:", err);
+        setMessage("Could not load businesses.");
+      });
+  }, []);
+
+  useEffect(() => {
+    if (!socket) return;
 
     socket.on("new-business", (data) => {
       setBusinesses(prev => [data, ...prev]);
     });
 
-    return () => socket.disconnect();
-  }, []);
+    return () => {
+      socket.off("new-business"); // ✅ Remove listener
+    };
+  }, [socket]);
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -31,9 +48,10 @@ function App() {
       const res = await axios.post("https://backendbusiness.onrender.com/api/auth/login", auth);
       localStorage.setItem("token", res.data.token);
       setToken(res.data.token);
-      setMessage("Logged in successfully");
+      setUser(res.data.user); // ✅ Store user info
+      setMessage("Logged in as " + res.data.user.email);
     } catch (err) {
-      setMessage("Login failed: " + err.response?.data || err.message);
+      setMessage("Login failed: " + (err.response?.data || err.message));
     }
   };
 
@@ -46,7 +64,7 @@ function App() {
       setForm({ name: "", phone: "", description: "", location: { lat: "", lng: "" } });
       setMessage("Business added!");
     } catch (err) {
-      setMessage("Add failed: " + err.response?.data || err.message);
+      setMessage("Add failed: " + (err.response?.data || err.message));
     }
   };
 
@@ -57,13 +75,22 @@ function App() {
       {!token && (
         <form onSubmit={handleLogin} style={{ marginBottom: "2rem" }}>
           <h3>Producer Login</h3>
-          <input placeholder="Email" onChange={(e) => setAuth({ ...auth, email: e.target.value })} />
-          <input placeholder="Password" type="password" onChange={(e) => setAuth({ ...auth, password: e.target.value })} />
+          <input
+            placeholder="Email"
+            required
+            onChange={(e) => setAuth({ ...auth, email: e.target.value })}
+          />
+          <input
+            placeholder="Password"
+            type="password"
+            required
+            onChange={(e) => setAuth({ ...auth, password: e.target.value })}
+          />
           <button type="submit">Login</button>
         </form>
       )}
 
-      {token && (
+      {token && user?.role === "producer" && (
         <form onSubmit={handleAddBusiness} style={{ marginBottom: "2rem" }}>
           <h3>Add Business (Producers Only)</h3>
           <input placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -75,19 +102,23 @@ function App() {
         </form>
       )}
 
-      <p>{message}</p>
+      <p style={{ color: "crimson" }}>{message}</p>
 
       <h2>Available Businesses</h2>
-      {businesses.map((biz, i) => (
-        <div key={i} style={{ border: "1px solid #ccc", padding: "1rem", marginBottom: "1rem" }}>
-          <h3>{biz.name}</h3>
-          <p>{biz.description}</p>
-          <p>📞 {biz.phone}</p>
-          <a href={`https://maps.google.com/?q=${biz.location.lat},${biz.location.lng}`} target="_blank" rel="noreferrer">
-            📍 View on Map
-          </a>
-        </div>
-      ))}
+      {businesses.length === 0 ? (
+        <p>No businesses available.</p>
+      ) : (
+        businesses.map((biz, i) => (
+          <div key={i} style={{ border: "1px solid #ccc", padding: "1rem", marginBottom: "1rem" }}>
+            <h3>{biz.name}</h3>
+            <p>{biz.description}</p>
+            <p>📞 {biz.phone}</p>
+            <a href={`https://maps.google.com/?q=${biz.location.lat},${biz.location.lng}`} target="_blank" rel="noreferrer">
+              📍 View on Map
+            </a>
+          </div>
+        ))
+      )}
     </div>
   );
 }
